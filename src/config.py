@@ -1,11 +1,21 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+"""
+影像轉 G-Code 的全域參數管理
+
+使用 Pydantic BaseSettings 管理所有 CLI 參數與環境變數，
+提供型別安全與自動驗證。
+"""
+
 from pathlib import Path
-from typing import Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class AppConfig(BaseSettings):
     """
     影像轉 G-Code 的全域參數管理
+
+    所有參數均可透過 CLI 引數或 .env 檔案設定。
     """
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     file: str
@@ -15,7 +25,7 @@ class AppConfig(BaseSettings):
     skeleton: bool = False
     autotrace: bool = False
     minimize: bool = True
-    
+
     # 影像處理參數
     threshold: float = 60.0
     simplify: float = 0.1
@@ -32,7 +42,7 @@ class AppConfig(BaseSettings):
     center: bool = True
     rotate: float = 0.0
     debug: bool = False
-    
+
     # 進給率 (Feedrate) mm/min
     feedrate: float = 1200.0
     rapid_feedrate: float = 3000.0
@@ -44,14 +54,9 @@ class AppConfig(BaseSettings):
     def output_path(self) -> Path:
         """
         計算輸出的子目錄路徑
+
+        Returns:
+            以原始檔名加 .gcode 後綴的 Path 物件
         """
         filename = Path(self.file).name
         return Path(self.folder) / f"{filename}.gcode"
-
-config = None
-
-def get_config(**kwargs) -> AppConfig:
-    global config
-    if config is None or kwargs:
-        config = AppConfig(**kwargs)
-    return config

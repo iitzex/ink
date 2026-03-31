@@ -1,83 +1,71 @@
+"""
+提筆路徑優化模組
+
+使用 KDTree 空間索引實作最近鄰搜尋 (Nearest Neighbor Heuristic)，
+將路徑重新排序以最小化提筆空走距離。
+"""
+
 import numpy as np
 from scipy.spatial import KDTree
 from loguru import logger as log
-from typing import List, Tuple, TypeAlias
+from typing import TypeAlias
 
-# [x, y] coordinates
-Point: TypeAlias = np.ndarray
+# 型別定義
 PathData: TypeAlias = np.ndarray  # (N, 2) shaped array
 
-def minimize_moves_fast(paths: List[PathData]) -> List[PathData]:
+
+def minimize_moves_fast(paths: list[PathData]) -> list[PathData]:
     """
-    使用 KDTree 實作高效的最近鄰搜尋 (Nearest Neighbor for TSP-like Path Ordering)
-    
+    使用一次性 KDTree 實作高效的最近鄰路徑排序
+
+    一次建構所有路徑端點的 KDTree，再以貪心法逐一挑選
+    距離當前位置最近的未使用路徑。若最近的是路徑終點，
+    則自動翻轉該路徑方向。
+
     Args:
-        paths: 包含所有路徑座標的 List，每一項是 (N, 2) 的 Numpy Array。
-    
+        paths: 包含所有路徑座標的 List，每一項是 (N, 2) 的 Numpy Array
+
     Returns:
-        優化順序後的路徑清單。
+        優化順序後的路徑清單
     """
     if not paths:
         return []
-        
-    log.info(f"開始由 {len(paths)} 條路徑進行提筆路徑優化...")
-    
-    # 建立所有路徑端點的集庫
-    # 每個路徑有 Start (0) 與 End (-1)
-    # 用來追蹤哪些路徑還沒被使用
-    unused_indices = set(range(len(paths)))
-    ordered_paths = []
-    
-    # 從第一條路徑開始 (維持原有的第 0 條不變或隨機)
-    current_idx = 0
-    unused_indices.remove(current_idx)
-    ordered_paths.append(paths[current_idx])
-    
-    while unused_indices:
-        # 當前路徑的最後一個點
-        last_point = ordered_paths[-1][-1]
-        
-        # 從剩下的路徑中，找出起始點或結束點最靠近 last_point 的
-        remaining_indices = list(unused_indices)
-        
-        # 建立端點座標矩陣：包含剩餘路徑的 start 與 end
-        endpoints = []
-        for idx in remaining_indices:
-            endpoints.append(paths[idx][0])   # Start
-            endpoints.append(paths[idx][-1])  # End
-        
-        endpoints_arr = np.array(endpoints)
-        tree = KDTree(endpoints_arr)
-        
-        # 搜尋最靠近當前結束點的端點
-        dist, min_coord_idx = tree.query(last_point)
-        
-        # 判斷是哪條路徑及其方向
-        target_path_idx = remaining_indices[min_coord_idx // 2]
-        is_end_point = (min_coord_idx % 2 == 1)
-        
-        target_path = paths[target_path_idx]
-        if is_end_point:
-            # 如果是 End 點最接近，則翻轉該路徑
-            target_path = target_path[::-1]
-            
-        ordered_paths.append(target_path)
-        unused_indices.remove(target_path_idx)
-        
-    return ordered_paths
 
-def fuse_points_vectorized(points: np.ndarray, d_sq: float) -> np.ndarray:
-    """
-    向量化濾除過於接近的點
-    """
-    if len(points) < 2:
-        return points
-    
-    diff = np.diff(points, axis=0)
-    dists_sq = np.sum(diff**2, axis=1)
-    
-    mask = np.ones(len(points), dtype=bool)
-    # 簡單邏輯：若兩點距離小於閾值，標記下一個點為 False
-    # 注意：這只是第一層。完整實作需要累積距離。
-    # 這裡為簡便，先提供基本去重
-    return points[np.concatenate(([True], dists_sq > d_sq))]
+    n = len(paths)
+    log.info(f"開始由 {n} 條路徑進行提筆路徑優化...")
+
+    # 一次性建構所有端點的 KDTree
+    # 索引規則: path i → start = 2*i, end = 2*i+1
+    endpoints = np.empty((n * 2, 2))
+    for i, p in enumerate(paths):
+        endpoints[2 * i] = p[0]       # Start
+        endpoints[2 * i + 1] = p[-1]  # End
+
+    tree = KDTree(endpoints)
+
+    # 貪心搜尋
+    visited = np.zeros(n, dtype=bool)
+    ordered: list[PathData] = []
+
+    # 從第 0 條開始
+    visited[0] = True
+    ordered.append(paths[0])
+
+    for _ in range(n - 1):
+        last_point = ordered[-1][-1]
+
+        # 從 KDTree 搜尋最近的 k 個端點
+        # 最多需要查 2*n 個（但大部分情況只需少量）
+        dists, indices = tree.query(last_point, k=min(n * 2, 2 * n))
+
+        # 找到第一個屬於未 visited 路徑的端點
+        for dist, idx in zip(dists, indices):
+            path_idx = idx // 2
+            if not visited[path_idx]:
+                is_end = (idx % 2 == 1)
+                target = paths[path_idx][::-1] if is_end else paths[path_idx]
+                ordered.append(target)
+                visited[path_idx] = True
+                break
+
+    return ordered

@@ -5,18 +5,13 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "click>=8.3.1",
     "loguru>=0.7.3",
     "numpy>=2.4.4",
     "pillow>=12.1.1",
     "pydantic-settings>=2.0.0",
     "scipy>=1.12.0",
-    "shapely>=2.1.2",
     "simplification>=0.7.14",
-    "svg-path>=7.0",
     "svgpathtools>=1.7.2",
-    "svgwrite>=1.4.3",
-    "tqdm>=4.67.3",
 ]
 
 [project.scripts]
