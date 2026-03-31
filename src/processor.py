@@ -156,41 +156,69 @@ class VectorProcessor:
         """
         產出 G-Code 與 SVG 預覽
         """
+        if not self.paths_data:
+            log.warning("沒有可輸出的路徑數據")
+            return
+
+        # 1. 計算所有路徑的包圍盒 (Bounding Box)
+        all_pts = np.vstack(self.paths_data)
+        min_x, min_y = np.min(all_pts, axis=0)
+        max_x, max_y = np.max(all_pts, axis=0)
+        
+        # 2. 如果開啟置中，則將物件真實幾何中心對齊 (0,0)
+        if self.config.center:
+            center_x = (min_x + max_x) / 2.0
+            center_y = (min_y + max_y) / 2.0
+            log.info(f"執行物件包圍盒置中... 偏移: X={-center_x:.2f}, Y={-center_y:.2f}")
+            for i in range(len(self.paths_data)):
+                self.paths_data[i][:, 0] -= center_x
+                self.paths_data[i][:, 1] -= center_y
+            # 重新計算置中後的包圍盒供 SVG 使用
+            min_x, max_x = min_x - center_x, max_x - center_x
+            min_y, max_y = min_y - center_y, max_y - center_y
+
         output_dir = self.config.output_path
         output_dir.mkdir(parents=True, exist_ok=True)
         
-        gcode_path = output_dir / "image.gc"
+        # 3. 寫入 G-Code
+        gcode_path = output_dir / "image.gcode"
         log.info(f"正在寫入 G-Code 至: {gcode_path}")
         
         with open(gcode_path, "w") as f:
-            # 主軸啟動 (M3) 與設定轉速 (S)
             f.write(f"M3 S{self.config.spindle_speed}\n")
-            # 確保一開始是提筆狀態
             f.write(f"G01 Z{self.config.penup} F{self.config.rapid_feedrate}\n") 
             for path in self.paths_data:
-                # 1. 先提筆再移動 (避免橫向位移時刮到工件)
                 f.write(f"G01 Z{self.config.penup} F{self.config.rapid_feedrate}\n")
-                # 2. 快速移動至路徑起點 (XY 平面移動)
                 f.write(f"G01 X{path[0][0]:.3f} Y{path[0][1]:.3f}\n")
-                # 3. 落筆與工作進給率 (Z 軸向進入)
                 f.write(f"G01 Z{self.config.pendown} F{self.config.feedrate}\n")
-                # 繪製路徑
                 for pt in path[1:]:
                     f.write(f"G01 X{pt[0]:.3f} Y{pt[1]:.3f}\n")
-                # 4. 每個路徑結束後提筆
                 f.write(f"G01 Z{self.config.penup} F{self.config.rapid_feedrate}\n")
-            # 停止主軸 (M5)
             f.write("M05\n")
+            
+        # 輸出加工時間預估報表
+        self.estimate_execution_time()
         
-        # 建立簡化的 SVG 預覽檔
+        # 4. 建立修復後的 SVG 預覽檔 (使用動態 viewBox)
         svg_preview = output_dir / "final.svg"
         log.info(f"產出 SVG 預覽: {svg_preview}")
+        
+        w_val = max_x - min_x
+        h_val = max_y - min_y
+        padding = max(w_val, h_val) * 0.05
+        vb_min_x = min_x - padding
+        vb_min_y = min_y - padding
+        vb_w = w_val + 2 * padding
+        vb_h = h_val + 2 * padding
+        
         with open(svg_preview, "w") as f:
             f.write(f'<?xml version="1.0" encoding="utf-8" ?>\n')
-            f.write(f'<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">\n')
+            f.write(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{vb_min_x} {vb_min_y} {vb_w} {vb_h}" width="800" height="800">\n')
+            f.write(f'  <g transform="scale(1, -1)"> <!-- 翻轉 Y 軸以符合 CNC 座標系 -->\n')
             for path in self.paths_data:
-                points_str = " ".join([f"{pt[0]},{pt[1]}" for pt in path])
-                f.write(f'  <polyline points="{points_str}" fill="none" stroke="black" stroke-width="0.5" />\n')
+                points_str = " ".join([f"{pt[0]},{-pt[1]}" for pt in path])
+                f.write(f'    <polyline points="{points_str}" fill="none" stroke="black" stroke-width="0.5" />\n')
+            f.write("  </g>\n")
             f.write("</svg>")
 
     def generate_hatch_paths(self):
@@ -271,3 +299,51 @@ class VectorProcessor:
         bmp.unlink(missing_ok=True)
         svg.unlink(missing_ok=True)
         log.success("轉檔完成！")
+
+    def estimate_execution_time(self):
+        """
+        計算並輸出 G-Code 的預估加工時間
+        """
+        if not self.paths_data:
+            return
+
+        total_work_dist = 0.0    # 雕刻時的距離 (Work Feedrate)
+        total_rapid_dist = 0.0   # 空走時的距離 (Rapid Feedrate)
+        
+        # 1. 雕刻距離 (Work Distance)
+        for path in self.paths_data:
+            if len(path) < 2: continue
+            diff = np.diff(path, axis=0)
+            dists = np.sqrt(np.sum(diff**2, axis=1))
+            total_work_dist += np.sum(dists)
+            
+        # 2. 空走跳轉距離 (Rapid Distance)
+        # 包含：各路徑之間的 XY 跳轉
+        for i in range(len(self.paths_data) - 1):
+            p1 = self.paths_data[i][-1] # 當前路徑末點
+            p2 = self.paths_data[i+1][0] # 下一路徑起點
+            total_rapid_dist += np.linalg.norm(p2 - p1)
+            
+        # 3. Z 軸垂直高度損耗 (Z-Axis Distance)
+        # 每條路徑： 1 次落筆 + 1 次提筆
+        z_move_per_path = abs(self.config.penup - self.config.pendown) * 2
+        total_z_dist = len(self.paths_data) * z_move_per_path
+        
+        # 4. 時間計算 (單位: 分鐘)
+        # 公式: T = Distance / Feedrate
+        # 注意: Feedrate 單位通常是 mm/min
+        t_work = total_work_dist / self.config.feedrate
+        t_rapid = (total_rapid_dist + total_z_dist) / self.config.rapid_feedrate
+        
+        # 加上 15% 的機台加速度與緩衝損耗 (Safety Margin)
+        total_minutes = (t_work + t_rapid) * 1.15
+        
+        # 格式化輸出
+        m = int(total_minutes)
+        s = int((total_minutes - m) * 60)
+        
+        log.info(f"--- 加工時間報表 ---")
+        log.info(f"總雕刻距離: {total_work_dist:.2f} mm")
+        log.info(f"總提筆移動: {total_rapid_dist + total_z_dist:.2f} mm")
+        log.info(f"預估加工時間: <yellow>{m:02d}m {s:02d}s</yellow> (含 15% 安全係數)")
+        log.info(f"-------------------")

@@ -46,7 +46,7 @@ class AppConfig(BaseSettings):
         計算輸出的子目錄路徑
         """
         filename = Path(self.file).name
-        return Path(self.folder) / f"{filename}.img2gcode"
+        return Path(self.folder) / f"{filename}.gcode"
 
 config = None
 
