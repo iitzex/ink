@@ -8,3 +8,25 @@ wheels/
 
 # Virtual environments
 .venv
+.pdm-python
+
+# Image Processing Tools
+temp_thresholded.bmp
+temp_vector.svg
+temp.tga
+
+# CNC Output
+*.gcode/
+*.img2gcode/
+image.gc
+image.gcode
+
+# Project Data
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.svg
+!src/**/*.svg
+!assets/**/*.svg
+!README.md
