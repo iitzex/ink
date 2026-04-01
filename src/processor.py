@@ -271,6 +271,9 @@ class VectorProcessor:
         """
         將路徑數據寫入 G-Code 檔案
 
+        使用 G00 快速定位進行空走移動（X/Y/Z 提筆），
+        使用 G01 進行雕刻進給。
+
         Args:
             gcode_path: 輸出的 G-Code 檔案路徑
         """
@@ -279,14 +282,14 @@ class VectorProcessor:
 
         with open(gcode_path, "w") as f:
             f.write(f"M3 S{cfg.spindle_speed}\n")
-            f.write(f"G01 Z{cfg.penup} F{cfg.rapid_feedrate}\n")
+            f.write(f"G00 Z{cfg.penup}\n")
             for path in self.paths_data:
-                f.write(f"G01 Z{cfg.penup} F{cfg.rapid_feedrate}\n")
-                f.write(f"G01 X{path[0][0]:.3f} Y{path[0][1]:.3f}\n")
+                f.write(f"G00 Z{cfg.penup}\n")
+                f.write(f"G00 X{path[0][0]:.3f} Y{path[0][1]:.3f}\n")
                 f.write(f"G01 Z{cfg.pendown} F{cfg.feedrate}\n")
                 for pt in path[1:]:
                     f.write(f"G01 X{pt[0]:.3f} Y{pt[1]:.3f}\n")
-                f.write(f"G01 Z{cfg.penup} F{cfg.rapid_feedrate}\n")
+                f.write(f"G00 Z{cfg.penup}\n")
             f.write("M05\n")
 
     def _write_svg_preview(self, svg_path: Path) -> None:
