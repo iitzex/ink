@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
+*.qwen
 
 # Virtual environments
 .venv
@@ -30,3 +31,4 @@ image.gcode
 !src/**/*.svg
 !assets/**/*.svg
 !README.md
+.qwen/

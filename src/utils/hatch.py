@@ -5,6 +5,7 @@
 連接路徑，大幅減少 Z 軸升降次數以提升 CNC 加工效率。
 """
 
+import math
 import numpy as np
 from PIL import Image
 
@@ -71,10 +72,7 @@ def generate_hatch_paths_v2(
             if not current_chain:
                 current_chain.extend([p_start, p_end])
             else:
-                dist = np.linalg.norm(
-                    np.array(p_start) - np.array(current_chain[-1])
-                )
-                if dist < hatch_mm * 1.5:
+                if math.dist(p_start, current_chain[-1]) < 0.1:
                     current_chain.extend([p_start, p_end])
                 else:
                     _flush_chain(current_chain, all_paths)

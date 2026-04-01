@@ -110,13 +110,13 @@ class VectorProcessor:
             log.info("使用 Autotrace (Centerline) 進行向量化...")
             temp_tga = tempfile.NamedTemporaryFile(suffix=".tga", delete=False)
             Image.open(bmp_path).save(temp_tga.name)
-            cmd = f"autotrace -output-file {svg_path} --output-format svg --centerline {temp_tga.name}"
-            subprocess.run(cmd.split(), check=True)
+            cmd = ["autotrace", "-output-file", str(svg_path), "--output-format", "svg", "--centerline", temp_tga.name]
+            subprocess.run(cmd, check=True)
             Path(temp_tga.name).unlink(missing_ok=True)
         else:
             log.info("使用 Potrace (Outline) 進行向量化...")
-            cmd = f"potrace -b svg -o {svg_path} -n {bmp_path}"
-            subprocess.run(cmd.split(), check=True)
+            cmd = ["potrace", "-b", "svg", "-o", str(svg_path), "-n", str(bmp_path)]
+            subprocess.run(cmd, check=True)
 
         return svg_path
 
@@ -165,6 +165,8 @@ class VectorProcessor:
             # 偵測斷點 (Discontinuity check)
             if i > 0 and abs(segment.start - path[i - 1].end) > 1e-5:
                 if current_points:
+                    prev_end = path[i - 1].end
+                    current_points.append([prev_end.real, prev_end.imag])
                     sub_paths.append(current_points)
                 current_points = []
 
@@ -284,7 +286,6 @@ class VectorProcessor:
             f.write(f"M3 S{cfg.spindle_speed}\n")
             f.write(f"G00 Z{cfg.penup}\n")
             for path in self.paths_data:
-                f.write(f"G00 Z{cfg.penup}\n")
                 f.write(f"G00 X{path[0][0]:.3f} Y{path[0][1]:.3f}\n")
                 f.write(f"G01 Z{cfg.pendown} F{cfg.feedrate}\n")
                 for pt in path[1:]:

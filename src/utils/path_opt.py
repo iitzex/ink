@@ -167,7 +167,8 @@ def two_opt_lightweight(paths: list[PathData], max_iterations: int = 50) -> list
                 new_dist += np.linalg.norm(get_start(i + 2) - get_end(i))
 
             if new_dist < old_dist - 1e-6:
-                # 實際交換
+                # 實際交換（paths 本體與 metadata 必須同步）
+                paths[i], paths[i + 1] = paths[i + 1], paths[i]
                 starts[i], starts[i + 1] = starts[i + 1], starts[i]
                 ends[i], ends[i + 1] = ends[i + 1], ends[i]
                 reversed_flags[i], reversed_flags[i + 1] = reversed_flags[i + 1], reversed_flags[i]
